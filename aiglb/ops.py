@@ -199,8 +199,13 @@ def radial_array(mesh: trimesh.Trimesh, count: int, radius: float,
     return concat(copies)
 
 
-def box_project(mesh: trimesh.Trimesh, uv_scale: float = 1.0) -> trimesh.Trimesh:
-    """Dominant-axis planar unwrap for arbitrary meshes (per-face, hard edges)."""
+def box_project(mesh: trimesh.Trimesh, uv_scale: float = 1.0,
+                uv_offset=(0.0, 0.0), uv_rotation: float = 0.0) -> trimesh.Trimesh:
+    """Dominant-axis planar unwrap for arbitrary meshes (per-face, hard edges).
+
+    ``uv_scale`` tiles per meter; ``uv_offset`` shifts UVs; ``uv_rotation``
+    rotates them (radians).
+    """
     v, f, n, _ = _mesh_parts(mesh)
     fn = np.cross(v[f[:, 1]] - v[f[:, 0]], v[f[:, 2]] - v[f[:, 0]])
     axis = np.argmax(np.abs(fn), axis=1)
@@ -219,5 +224,11 @@ def box_project(mesh: trimesh.Trimesh, uv_scale: float = 1.0) -> trimesh.Trimesh
                 UV[k * 3 + j] = (p[0], p[2])
             else:               # +/-Z : project on XY
                 UV[k * 3 + j] = (p[0], p[1])
+    if uv_rotation:
+        c, s = math.cos(uv_rotation), math.sin(uv_rotation)
+        R = np.array([[c, -s], [s, c]])
+        UV = UV @ R.T
     UV *= uv_scale
+    UV[:, 0] += uv_offset[0]
+    UV[:, 1] += uv_offset[1]
     return _pack(V, F, N, UV)

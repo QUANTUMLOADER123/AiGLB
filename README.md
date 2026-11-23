@@ -1,7 +1,7 @@
 # AiGLB 🧊
 
 **Describe a 3D model in a few dozen lines of Python → get a real, textured, PBR `.glb` file.**
-Built for humans *and* for AI agents (that's why this README is written the way it is). No Blender, no GUI, no assets: everything — meshes, UVs, normals, textures — is generated on the fly.
+Built for humans *and* for AI agents (that's why this README is written the way it is). No Blender, no GUI, no external downloads: meshes, UVs, normals are generated on the fly, and **245 real CC0 PBR texture sets are baked into the package** (plus procedural generators).
 
 > **Коротко по-русски:** это тулка, которая позволяет написать маленький Python-скрипт вместо ручной работы в 3D-редакторе и получить готовую `.glb`-модель с PBR-текстурами. Ставится одной командой, работает без GPU. Если ты нейросеть — читай дальше целиком, тут написано всё, что нужно, чтобы с первой попытки сделать красивую модель.
 
@@ -17,12 +17,12 @@ You are expected to build a **.glb model from scratch** with this tool. Here is 
 4. **Check**: `aiglb check model.glb` — prints parts, triangles, sizes, embedded textures and *warnings*. If it prints ⚠ warnings, fix them.
 5. **Look**: `aiglb preview model.glb -o preview.png` — renders a real image (no GPU needed). **Open the PNG and judge your own work.** Iterate on proportions, materials, details.
 
-That's it. You do **not** need templates, asset packs or prior files — compose primitives. The rest of this document is the reference. Examples of what the tool produces are at the bottom (robot, cottage, mug, lighthouse).
+That's it. You do **not** need templates, asset packs or prior files — compose primitives. The rest of this document is the reference. Examples of what the tool produces are at the bottom (robot, cottage, mug, lighthouse, rifle).
 
 **Ground rules for a beautiful result:**
 - Think in **meters, +Y up**. A door is 2.05 m. A robot is ~1.7 m. A car is ~4.4 m. Wrong scale is the #1 cause of "weird" models.
 - Build **big shapes first, then details** (silhouette → volumes → materials → micro-detail like bolts/seams).
-- **Overlap parts**, never stack them tangentially (a head hat sitting exactly on the body z-fights; sink it 2–5 mm in).
+- **Overlap parts**, never stack them tangentially (a head hat sitting exactly on the body z-fights; sink it 2–5 mm in). Mating by eye almost always leaves hairline gaps — use `aiglb.touch(...)` / `aiglb.place_on(...)` (see §8) and confirm with `aiglb check`, which reports floating parts.
 - Use **2–4 materials** per object plus optional **emissive** accents (`"lamp_warm"`, `"neon_cyan"`, ...). Emissive parts instantly look alive.
 - Give big flat surfaces a **tiled texture** with `uv_scale` (brick `uv_scale≈0.5`, wood planks `0.4–0.8`), not giant stretched skins.
 - Vary **roughness**: matte (leather, brick, rubber `0.8–1.0`) vs. shiny (chrome `0.05`, glass, gold `0.15`) — contrast reads as quality.
@@ -46,7 +46,7 @@ pip install -e .
 
 **PEP 668 / externally-managed Python (Debian, Ubuntu, some sandboxes):** either use a venv (`python3 -m venv .venv && .venv/bin/pip install -e .`) or add `--break-system-packages`.
 
-Requirements: Python ≥ 3.9. Dependencies (`trimesh`, `numpy`, `Pillow`, `shapely`, `pygltflib`) install automatically from PyPI. **No GPU, no system libraries, no display.**
+Requirements: Python ≥ 3.9. Dependencies (`trimesh`, `numpy`, `Pillow`, `shapely`, `pygltflib`) install automatically from PyPI, along with ~64 MB of bundled CC0 textures (see §6) — no downloads, no GPU, no system libraries, no display.
 
 **Verify the install** — build the built-in demo rocket:
 ```bash
@@ -189,7 +189,7 @@ wall = aiglb.extrude([(0, 0), (2.4, 0), (2.4, 0.7), (0.8, 0.7), (0.8, 2.2), (0, 
 
 **Three ways to specify `material=` in `scene.add`:**
 
-1. **Preset name** — 50 built-ins (see `aiglb presets`):
+1. **Preset name** — 59 built-ins (see `aiglb presets`):
    - *Metals:* `chrome` `steel` `brushed_steel` `aluminum` `gunmetal` `black_metal` `gold` `brass` `copper` `mirror`
    - *Wood:* `oak` `walnut` `pine` `dark_wood` `planks` `bark`
    - *Stone / masonry:* `marble` `granite` `brick` `concrete` `terracotta`
@@ -197,8 +197,9 @@ wall = aiglb.extrude([(0, 0), (2.4, 0), (2.4, 0.7), (0.8, 0.7), (0.8, 2.2), (0, 
    - *Fabric / leather:* `fabric_blue` `fabric_red` `fabric_gray` `leather_brown` `leather_black`
    - *Organic:* `grass` `leaf_green`
    - *Special:* `glass` `water` `checker_floor` `grid_tiles` `lava` `ember` `lamp_warm` `neon_pink` `neon_cyan` `screen` `mirror`
+   - *Library-backed (see §6):* `blued_steel` `worn_steel` `rusty_steel` `chipped_red_paint` `worn_red_wood` `weathered_wood` `old_concrete` `old_brick` `camouflage_woodland`
 2. **Hex color:** `"#c0392b"` — plain PBR color (roughness 0.45).
-3. **Custom material** — `aiglb.color_material(...)` or `aiglb.texture_material(...)`.
+3. **Custom material** — `aiglb.color_material(...)`, `aiglb.texture_material(...)` (procedural) or `aiglb.library_material(...)` (real CC0 scans, see §6).
 
 ```python
 aiglb.color_material("#7f4f24", roughness=0.55, metalness=0.0)            # plain
@@ -219,7 +220,119 @@ aiglb.texture_material("lava", emissive_texture="lava", emissive_intensity=1.6) 
 
 ---
 
-## 6. Assembling bigger things
+## 6. Bundled CC0 texture library
+
+Beyond the procedural generators, aiglb ships **245 real, tileable PBR texture sets** — base color, normal, roughness, metalness — transcoded from CC0-1.0 (public domain) collections: ambientCG, CGBookcase, TextureCan, Poly Haven, ShareTextures and DevTextures. **Everything works fully offline**; the ~64 MB of assets are installed automatically with the package.
+
+```python
+import aiglb
+
+# chipped red-orange painted furniture wood (think AK handguards)
+wood = aiglb.library_material("ambientcg/PaintedWood006B", wear=0.45, uv_scale=1.7, seed=11)
+# dark, fine-grained blued steel with scratches
+steel = aiglb.library_material("texturecan/Metal0056", tint=(0.60, 0.61, 0.68),
+                               contrast=0.85, scratches=0.55, roughness=0.40, uv_scale=2.6)
+# heavy rust bloom, metalness killed underneath
+rust = aiglb.library_material("polyhaven/rusty_metal_04", rust=0.6, uv_scale=1.8)
+```
+
+**Shorthand:** `material="lib:ambientcg/Metal031"` in `scene.add(...)` (or `aiglb.preset_material("lib:...")`) uses the set with default tuning.
+
+**Discover sets:**
+
+```bash
+aiglb library                    # list all 245 sets (prints lib:<name> ready to use)
+aiglb library --category metal   # filter by category (see aiglb.library_categories())
+```
+
+```python
+aiglb.list_library()                        # every bundled set name
+aiglb.list_library("wood")                  # one category
+aiglb.library_categories()                  # counts per category
+aiglb.library_info("ambientcg/Metal031")    # maps, license, source collections
+```
+
+**Parameters:** `library_material(texture, *, uv_scale=1.0, uv_offset=(0, 0), uv_rotation=0.0, brightness=1.0, contrast=1.0, saturation=1.0, tint=None, normal_strength=1.0, metallic=None, roughness=None, roughness_offset=0.0, roughness_contrast=1.0, wear=0.0, scratches=0.0, scuffs=0.0, paint_chip=0.0, chip_color=None, rust=0.0, rust_color=None, dirt=0.0, dust=0.0, grunge=0.0, fingerprints=0.0, seed=0, ...)`.
+
+Aging knobs (baked at material-build time, ~50–200 ms per unique combo, deterministic via `seed`):
+
+- `wear` — master aging knob: chipping + scuffing + scratching + dirt
+- `scratches` — chaotic thin scratches · `scuffs` — long aligned drag streaks
+- `paint_chip` / `chip_color` — chipped paint revealing bare metal underneath
+- `rust` / `rust_color` — oxidized bloom (metalness drops under rust)
+- `dirt` — dark low-frequency grime blotches · `dust` — bright high-frequency powder film
+- `grunge` — sooty splatter masks (hand-painted DevTextures) · `fingerprints` — oily smudges (lower roughness)
+- `brightness` / `contrast` / `saturation` / `tint` — color grading
+- `roughness_offset` / `roughness_contrast` — lift matte areas / spread the roughness response
+
+UVs are box-projected with `uv_scale` in tiles-per-meter — same world-scale convention as §3.
+
+**Licensing:** every bundled set is CC0-1.0 — free for commercial use, no attribution required. Author credits live in `aiglb/assets/TEXTURE_LICENSES.txt`.
+
+**Nine presets are library-backed**, so the simple named path looks pro too: `blued_steel` `worn_steel` `rusty_steel` `chipped_red_paint` `worn_red_wood` `weathered_wood` `old_concrete` `old_brick` `camouflage_woodland`.
+
+---
+
+## 7. Humanizer: hand-made shapes
+
+CG-perfect primitives read as sterile. Round the edges, then break the symmetry:
+
+```python
+import aiglb
+
+body = aiglb.rounded_box(0.42, 0.30, 0.20, sharpness=6.0)   # edges rounded, not razor-sharp
+rock = aiglb.humanize(aiglb.sphere(0.4, 32, 20), noise=0.05, noise_scale=2.0, seed=7)
+panel = aiglb.humanize(aiglb.box(0.6, 0.4, 0.02), noise=0.004, tessellate=2, seed=4)
+```
+
+- `superellipsoid(radius=(rx, ry, rz), sharpness=n)` — Lamé surface: 2.0 = ellipsoid, ~4–6 = rounded box, ≥ 8 = nearly crisp. `subdivisions` controls density.
+- `rounded_box(w, h, d, sharpness=5.0, subdivisions=3)` — convenience wrapper; watertight, smooth normals.
+- `subdivide(mesh, iterations=1)` — split every triangle into 4 (do this before displacing box-like meshes so the noise has vertices to grab).
+- `displace(mesh, amplitude, noise_scale=2.5, seed=0, octaves=3)` — fractal 3D value noise along normals; UVs preserved, normals recomputed.
+- `humanize(mesh, noise=0.0, noise_scale=2.5, seed=0, tessellate=0)` — subdivide + displace + smooth normals in one call. Keep `noise` ≈ 0.5–2 % of the part's size (e.g. 0.005–0.01 on a half-meter panel).
+
+---
+
+## 8. Mating parts & assembly checks
+
+"Almost touching" seams are the #1 tell of placed parts. Mate by measurement, not by eye:
+
+```python
+receiver = aiglb.box(0.400, 0.050, 0.033)
+stock = aiglb.rounded_box(0.225, 0.046, 0.027, sharpness=6.0)
+
+# slide stock along x until its +x face meets the receiver's -x face, sinking 3 mm in
+stock = aiglb.touch(stock, receiver, axis="x", side="max", gap=-0.003)
+
+lid = aiglb.place_on(lid, base, axis="y")      # stack: bottom of lid onto top of base
+wheel = aiglb.fit_diameter(wheel, 0.32)        # scale to an exact target size
+```
+
+- `touch(mesh, other, axis='y', side='min', gap=-0.002)` — translate until faces meet; negative `gap` overlaps (invisible seams, robust to precision loss).
+- `place_on(mesh, other, axis='y', gap=-0.002)` — same, oriented for stacking on top.
+- `fit_diameter(mesh, d)` / `fit_box(mesh, (w, h, d))` — scale to a target size.
+- `bounds_gap(a, b)` — signed bounding-box clearance between two meshes.
+- `connection_report(parts, gap=0.004)` — the exact check behind `aiglb check`.
+
+`aiglb check model.glb` ends with an **assembly report**:
+
+```
+Assembly:
+  ✓ no floating or hidden parts detected
+```
+
+or, when something is off:
+
+```
+Assembly:
+  ⚠ part 'rivet_0_0' does not touch any other part (nearest: 'receiver' at 6.9 mm) — mate them with aiglb.touch(...)/place_on(...) or negative overlap
+```
+
+Floating = no surface within 4 mm of any other part and no shared-space overlap; hidden = more than 65 % of the surface enclosed inside a bigger part. Computed with exact triangle-to-triangle distances — no octree shortcuts.
+
+---
+
+## 9. Assembling bigger things
 
 ```python
 import aiglb
@@ -256,7 +369,7 @@ Every operator returns a new mesh you can `scene.add(...)` like a primitive.
 
 ---
 
-## 7. How to make it look *good* (not just valid)
+## 10. How to make it look *good* (not just valid)
 
 1. **Silhouette first.** If the silhouette is boring, no material will save it. Compose 3–6 big primitives before any detail. Look at your `aiglb preview --view front` and ask: is the outline interesting?
 2. **Overlap, don't touch.** Parts that exactly touch flicker (z-fighting) and read as cheap. Sink joints by 1–5 cm: head into neck, handle into mug wall, roof wedge into walls.
@@ -274,7 +387,7 @@ Every operator returns a new mesh you can `scene.add(...)` like a primitive.
 
 ---
 
-## 8. Gotchas & FAQ
+## 11. Gotchas & FAQ
 
 **"My model is invisible / only some parts show."** Parts are centered at their origin — a `plane` is one-sided (+Y); from below it's invisible. Flip it (`rotation=(180, 0, 0)`) or use a thin `box`. Same for open `lathe`/`tube`: open ends are open.
 
@@ -304,13 +417,14 @@ Every operator returns a new mesh you can `scene.add(...)` like a primitive.
 
 ---
 
-## 9. Command line
+## 12. Command line
 
 ```
 aiglb build model.py [-o out.glb]   # runs your script; -o sets scene.save() default path
-aiglb check model.glb               # inspection: parts, tris, bounds, materials, warnings
+aiglb check model.glb               # inspection: parts, tris, bounds, materials, warnings, assembly gaps
 aiglb preview model.glb [-o out.png] [--view hero|iso|front|back|side|top] [--size 1100]
-aiglb presets                       # list all 50 material presets + 18 textures
+aiglb presets                       # list all 59 material presets + 18 procedural textures
+aiglb library [--category wood]    # list the 245 bundled CC0 texture sets
 aiglb demo [-o demo.glb]            # build the built-in demo rocket (install sanity check)
 aiglb --version
 ```
@@ -319,14 +433,17 @@ aiglb --version
 
 ---
 
-## 10. API in one screen
+## 13. API in one screen
 
 ```python
 import aiglb
 from aiglb import (box, plane, cylinder, cone, tube, sphere, capsule, torus,
                    lathe, extrude, wedge,                      # primitives
+                   rounded_box, superellipsoid,                 # rounded / hand-made forms
                    transformed, concat, mirror, linear_array,
-                   radial_array, box_project)                   # ops
+                   radial_array, box_project,                   # ops
+                   library_material, list_library,              # bundled CC0 sets
+                   touch, place_on, fit_diameter, fit_box)      # measured mating
 
 scene = aiglb.Scene("my_model")          # 1 unit = 1 m, +Y up
 part = scene.add("name", mesh, material, # mesh from a primitive/op/trimesh.Trimesh
@@ -335,17 +452,18 @@ part = scene.add("name", mesh, material, # mesh from a primitive/op/trimesh.Trim
                  scale=1.0)              # scalar or (sx, sy, sz)
 scene.save("model.glb")                  # explicit path also fine; writes, verifies, prints summary
 
-aiglb.list_presets()                     # 50 names
+aiglb.list_presets()                     # 59 names
 aiglb.list_textures()                    # 18 names
 aiglb.preset_material("oak")             # shared preset instance
 aiglb.color_material("#8a5a2b", roughness=0.6)
 aiglb.texture_material("brick", roughness=0.9, seed=2, size=512)
 aiglb.inspect_glb("model.glb")           # stats dict (used by `aiglb check`)
+aiglb.list_library()                     # 245 bundled CC0 texture sets
 ```
 
 ---
 
-## 11. Examples & gallery
+## 14. Examples & gallery
 
 All examples are self-contained scripts (`pip install -e .`, then `python3 examples/<name>.py`):
 
@@ -355,24 +473,25 @@ All examples are self-contained scripts (`pip install -e .`, then `python3 examp
 | `examples/cottage.py` | extrude footprint, mirrored wedge gable roof, chimney, lit windows, trees | ![](examples/cottage.png) |
 | `examples/mug.py` | `lathe` closed profile (hollow interior), torus handle, saucer | ![](examples/mug.png) |
 | `examples/lighthouse.py` | tapered `lathe`, striped procedural texture, emissive lamp room | ![](examples/lighthouse.png) |
+| `examples/rifle.py` | AK-style showcase: bundled CC0 materials + wear, rounded shapes, measured mating, `check`-clean assembly | ![](examples/rifle.png) |
 
 These are **illustrations of technique, not templates** — every model in this repo was written from scratch against the same API you just read.
 
 ---
 
-## 12. What aiglb is *not* (honest limits)
+## 15. What aiglb is *not* (honest limits)
 
 - **No CSG booleans** (no "subtract box from sphere"). Overlap solid primitives instead — rendering engines don't care and it looks the same.
 - **No rigging / animation / skins.** Static props and scenes.
 - **Single UV set, one material per part.** For multi-material objects, split them into named parts.
-- **Procedural textures only** — no photogrammetry, no HDRI painting.
+- **Surfaces come from generators or the bundled CC0 library** — no HDRI, no photogrammetry of your own props.
 - **Not a CAD kernel** — dimensions are float-truthful but there's no constraint solver.
 - glTF has no decals/lights; "lamps" are emissive surfaces, not light sources (use emissive + a viewer with bloom).
 
 ---
 
-## 13. Hacking on it
+## 16. Hacking on it
 
-Layout: `aiglb/primitives.py` (meshes with analytic normals/UVs) → `ops.py` (transforms/merges/arrays) → `materials.py` + `textures.py` (procedural PBR) → `scene.py` (assembly/export) → `validate.py` / `preview.py` / `cli.py`. Everything is dependency-light numpy/trimesh code; `trimesh` does the final glTF serialization. Run `python3 -c "import aiglb"` after edits, then rebuild the examples and `aiglb check` them.
+Layout: `aiglb/primitives.py` (meshes with analytic normals/UVs) → `humanize.py` (rounded forms, organic noise) → `ops.py` (transforms/merges/arrays) → `materials.py` + `textures.py` + `wear.py` + `library.py` (procedural PBR, aging, bundled CC0 sets) → `fit.py` + `assembly.py` (mating helpers & floating-part diagnostics) → `scene.py` (assembly/export) → `validate.py` / `preview.py` / `cli.py`. All 5 examples build and pass `aiglb check` with a clean assembly report; verify with `python3 examples/<name>.py && aiglb check examples/<name>.glb`. Everything is dependency-light numpy/trimesh code; `trimesh` does the final glTF serialization. Run `python3 -c "import aiglb"` after edits, then rebuild the examples and `aiglb check` them.
 
 MIT license. Issues/PRs welcome.

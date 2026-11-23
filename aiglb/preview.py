@@ -16,7 +16,7 @@ from PIL import Image, ImageDraw
 __all__ = ["render_preview"]
 
 _VIEWS = {
-    "hero": (17, 38), "iso": (26, 40), "front": (4, 90), "back": (4, -90),
+    "hero": (21, 37), "iso": (26, 40), "front": (4, 90), "back": (4, -90),
     "side": (4, 0), "top": (85, 90),
 }
 
@@ -37,7 +37,7 @@ def _camera(view: str, center: np.ndarray, span: float):
     e, a = math.radians(elev), math.radians(azim)
     # direction from target to camera (world space)
     d = np.array([math.cos(e) * math.cos(a), math.sin(e), math.cos(e) * math.sin(a)])
-    dist = span * 2.15 + 1e-6
+    dist = span * 1.12 + 1e-6
     eye = center + d * dist
     fwd = center - eye
     fwd /= np.linalg.norm(fwd)
@@ -58,7 +58,7 @@ def render_preview(path: str, out: Optional[str] = None, view: str = "hero",
     # ---------------- gather triangles ----------------
     raw_tris = []
     total = sum(len(g.faces) for g in scene.geometry.values())
-    stride = max(1, int(math.ceil(total / 24000)))
+    stride = max(1, int(math.ceil(total / 250000)))
 
     for name, geom in scene.geometry.items():
         verts = np.asarray(geom.vertices, dtype=np.float64)
@@ -119,9 +119,11 @@ def render_preview(path: str, out: Optional[str] = None, view: str = "hero",
     f = 0.5 * H / math.tan(math.radians(30))  # ~60° vertical fov
     cx = cy = H / 2.0
 
-    # light (world space, from upper-left-front)
+    # light (world space, from upper-left-front) + cool fill from the back-right
     L = np.array([-0.42, 0.78, 0.46])
     L = L / np.linalg.norm(L)
+    L2 = np.array([0.62, 0.35, -0.58])
+    L2 = L2 / np.linalg.norm(L2)
 
     # background: subtle vertical gradient + vignette
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
@@ -199,10 +201,11 @@ def render_preview(path: str, out: Optional[str] = None, view: str = "hero",
         if not closer.any():
             continue
 
-        # shade with two-sided lambert
+        # shade: key light (two-sided) + weaker fill, lifted ambient
         n = t["n"]
         nl = float(np.dot(n, L))
-        shade = 0.45 + 0.55 * abs(nl)
+        nl2 = float(np.dot(n, L2))
+        shade = np.float64(np.clip(0.51 + 0.52 * abs(nl) + 0.26 * max(nl2, 0.0), 0.0, 1.3))
 
         # color
         if t["base_tex"] is not None and t["uv"] is not None:
@@ -251,7 +254,7 @@ def render_preview(path: str, out: Optional[str] = None, view: str = "hero",
             sl[closer] = col[closer]
         zb_slice[closer] = pix_inv_z[closer]
 
-    canvas = np.clip(canvas, 0, 1)
+    canvas = np.clip(canvas, 0, 1) ** (1.0 / 1.42)  # lift midtones
     if out is None:
         out = path.rsplit(".", 1)[0] + "_preview.png"
     Image.fromarray((canvas * 255).astype(np.uint8)).save(out)

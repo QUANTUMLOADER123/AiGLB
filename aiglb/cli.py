@@ -32,16 +32,37 @@ def _cmd_build(args: argparse.Namespace) -> int:
 def _cmd_check(args: argparse.Namespace) -> int:
     from .validate import format_report
     print(format_report(args.model))
+    if not args.no_assembly:
+        from .assembly import assembly_report_path
+        print(assembly_report_path(args.model))
     return 0
 
 
 def _cmd_presets(args: argparse.Namespace) -> int:
+    from .library import list_library, library_categories
     print("Material presets (use the name as `material=` in scene.add, or '#hexcolor'):")
     for name in list_presets():
         print(f"  {name}")
+    print("\nBundled CC0 texture sets — use as \'lib:<name>\', e.g. material='lib:ambientcg/PaintedMetal004'")
+    for category, count in library_categories().items():
+        print(f"  {category:18s} {count:4d} sets")
+    print("\n(aiglb presets --library) lists every bundled set by name")
     print("\nBuilt-in procedural textures (for texture_material(...)):")
     for name in list_textures():
         print(f"  {name}")
+    return 0
+
+
+def _cmd_library(args: argparse.Namespace) -> int:
+    from .library import list_library
+    names = list_library(category=args.category)
+    header = f"Bundled CC0 texture sets ({len(names)})"
+    if args.category:
+        header += f" in category '{args.category}'"
+    print(header + " — use as material='lib:<name>':")
+    for name in names:
+        print(f"  lib:{name}")
+    print("\nAll CC0-1.0, free for commercial use. See aiglb/assets/TEXTURE_LICENSES.txt")
     return 0
 
 
@@ -71,12 +92,18 @@ def main(argv=None) -> int:
     p.add_argument("-o", "--output", default=None, help="default output .glb (via AIGLB_OUTPUT)")
     p.set_defaults(func=_cmd_build)
 
-    p = sub.add_parser("check", help="inspect a .glb file")
+    p = sub.add_parser("check", help="inspect a .glb file (structure + assembly gaps)")
     p.add_argument("model")
+    p.add_argument("--no-assembly", action="store_true",
+                   help="skip the floating/hidden part analysis")
     p.set_defaults(func=_cmd_check)
 
     p = sub.add_parser("presets", help="list built-in material presets and textures")
     p.set_defaults(func=_cmd_presets)
+
+    p = sub.add_parser("library", help="list bundled CC0 texture sets ('lib:<name>')")
+    p.add_argument("--category", default=None, help="filter by category (see 'aiglb presets')")
+    p.set_defaults(func=_cmd_library)
 
     p = sub.add_parser("preview", help="render a quick preview image")
     p.add_argument("model")

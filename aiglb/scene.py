@@ -86,16 +86,40 @@ class Scene:
 
     @staticmethod
     def _apply_material(mat: PBRMaterial, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
-        """Attach ``mat`` to ``mesh``; box-projects UVs (splitting vertices) if absent."""
+        """Attach ``mat`` to ``mesh``.
+
+        If the mesh already has UVs (all primitives ship world-scale UVs), the
+        material's ``_uv_scale`` / ``_uv_offset`` / ``_uv_rotation`` (library
+        materials) are applied on top of them; meshes without UVs get a fresh
+        dominant-axis box projection with those parameters. Works on a copy.
+        """
         from .ops import box_project
         image = getattr(mat, "baseColorTexture", None)
+        uv_scale = float(getattr(mat, "_uv_scale", 1.0))
+        uv_offset = getattr(mat, "_uv_offset", (0.0, 0.0))
+        uv_rotation = float(getattr(mat, "_uv_rotation", 0.0))
         kwargs = {"material": mat}
         if image is not None:
             kwargs["image"] = image
+        src_mesh = mesh
+        mesh = mesh.copy()
+        try:  # keep glTF's NORMAL export path intact: it checks the cache
+            cached_vn = getattr(src_mesh, "_cache", None) and src_mesh._cache.cache.get("vertex_normals")
+            if cached_vn is not None:
+                mesh._cache["vertex_normals"] = np.array(cached_vn, dtype=np.float64, copy=True)
+        except Exception:
+            pass
         if isinstance(mesh.visual, TextureVisuals):
-            mesh.visual = TextureVisuals(uv=np.asarray(mesh.visual.uv), **kwargs)
+            uv = np.asarray(mesh.visual.uv, dtype=np.float64)
+            if uv_rotation or uv_scale != 1.0 or tuple(uv_offset) != (0.0, 0.0):
+                c_, s_ = np.cos(uv_rotation), np.sin(uv_rotation)
+                rot = np.array([[c_, -s_], [s_, c_]])
+                uv = (uv @ rot.T) * uv_scale + np.asarray(uv_offset, dtype=np.float64)
+            kwargs["uv"] = uv
+            mesh.visual = TextureVisuals(**kwargs)
             return mesh
-        projected = box_project(mesh, uv_scale=1.0)
+        projected = box_project(mesh, uv_scale=uv_scale,
+                                uv_offset=uv_offset, uv_rotation=uv_rotation)
         projected.visual = TextureVisuals(uv=np.asarray(projected.visual.uv), **kwargs)
         return projected
 
@@ -127,8 +151,16 @@ class Scene:
             print(f"  ⚠ tangent injection skipped: {exc}")
 
         from .validate import inspect_glb
+        from .fit import connection_report
+        try:
+            assembly_warnings = connection_report(self.parts)
+        except Exception as exc:
+            assembly_warnings = [f"assembly check skipped: {exc}"]
         report = inspect_glb(path)
         report["tangents_injected"] = report_tangents
+        report["assembly_warnings"] = assembly_warnings
+        for w in assembly_warnings:
+            report["warnings"].append(w)
         report["export_seconds"] = round(time.time() - t0, 3)
 
         print(self._format_report(report, path))

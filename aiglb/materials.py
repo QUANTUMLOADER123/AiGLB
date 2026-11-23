@@ -8,16 +8,17 @@ Two ways to get a material:
 from __future__ import annotations
 
 from typing import Union
+import io
 
 import numpy as np
 from PIL import Image
 import trimesh
 from trimesh.visual.material import PBRMaterial
 
-from . import textures
+from . import textures, library, wear as _wear
 
 __all__ = [
-    "color_material", "texture_material", "preset_material",
+    "color_material", "texture_material", "library_material", "preset_material",
     "list_presets", "PRESET_NAMES", "resolve_material",
 ]
 
@@ -48,6 +49,20 @@ def _to_rgba_u8(color: ColorLike, alpha: float = 1.0) -> np.ndarray:
     if arr.max() <= 1.0 and arr.min() >= 0.0:
         arr = arr * 255.0
     return np.clip(arr, 0, 255).astype(np.uint8)
+
+
+def _as_jpeg(img: Image.Image, quality: int = 88, subsampling: int = 0) -> Image.Image:
+    """Re-encode an image as baseline JPEG (what glTF viewers expect).
+
+    trimesh embeds images with ``.format == 'JPEG'`` as-is (no re-encode), so
+    a pre-sized JPEG costs the same in the .glb as in memory.
+    """
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, "JPEG", quality=quality, subsampling=subsampling,
+                            optimize=True, progressive=False)
+    out = Image.open(io.BytesIO(buf.getvalue()))
+    out.load()
+    return out
 
 
 def _factor01(color: ColorLike) -> list[float]:
@@ -156,6 +171,137 @@ def texture_material(texture: str, *, size: int = 512, seed: int | None = None,
     return mat
 
 
+def library_material(texture: str, *, uv_scale: float = 1.0, uv_offset=(0.0, 0.0),
+                     uv_rotation: float = 0.0,
+                     brightness: float = 1.0, contrast: float = 1.0,
+                     saturation: float = 1.0, tint: ColorLike | None = None,
+                     normal_strength: float = 1.0,
+                     metallic: float | None = None, roughness: float | None = None,
+                     roughness_offset: float = 0.0, roughness_contrast: float = 1.0,
+                     wear: float = 0.0,
+                     scratches: float = 0.0, scuffs: float = 0.0,
+                     paint_chip: float = 0.0, chip_color: ColorLike | None = None,
+                     rust: float = 0.0, rust_color: ColorLike | None = None,
+                     dirt: float = 0.0, dust: float = 0.0,
+                     grunge: float = 0.0, fingerprints: float = 0.0,
+                     seed: int = 0,
+                     emissive: ColorLike | None = None, emissive_intensity: float = 1.0,
+                     opacity: float = 1.0, name: str | None = None,
+                     double_sided: bool = False) -> PBRMaterial:
+    """PBR material from the bundled CC0 texture library (245 real sets).
+
+    Parameters
+    ----------
+    texture : bundled set name, e.g. ``'ambientcg/PaintedMetal004'``
+           (see ``aiglb.list_library()`` and ``aiglb.library_categories()``)
+    uv_scale : tiling density in tiles per meter (applied on top of the mesh UVs,
+               or used for the box projection if the mesh has none), default 1.0
+    uv_offset : (du, dv) offset in UV tile units
+    uv_rotation : rotates the UVs, degrees
+    brightness, contrast, saturation : multiplicative-ish color grading
+    tint : hex/RGB color multiplied over the base color
+    normal_strength : normal-map intensity (1.0 = as authored)
+    metallic : override the set's metalness factor (glTF multiplies factor x map)
+    roughness : multiplier on the roughness map (or the factor, if no map)
+    roughness_offset : added to the roughness map (clamped), lifts matte areas up
+    roughness_contrast : contrast of the roughness map
+    wear : master aging knob — raises paint chipping, scuffing, scratching and dirt
+    scratches : chaotic thin scratches (polished floor -> darker roughness, bright lines)
+    scuffs : long aligned drag streaks (softer, wider)
+    paint_chip : amount of chipped paint revealing bare metal (``chip_color``)
+    rust : amount of oxidized rust bloom (kills metalness under rust)
+    dirt : dark low-frequency grime blotches
+    dust : bright high-frequency powder film
+    grunge : sooty splatter overlay (bundled hand-painted DevTextures masks)
+    fingerprints : oily elongated smudges (lowers roughness, darkens)
+    seed : deterministic seed — same inputs always give identical textures
+
+    Everything is baked at material-build time; ~50-200 ms per unique combo.
+    """
+    info = library.library_info(texture)  # raises KeyError with a helpful message
+    tint_rgb = None
+    if tint is not None:
+        tint_rgb = tuple(np.array(_to_rgba_u8(tint)[:3], dtype=np.float64) / 255.0)
+    chip_rgb = tuple(np.array(_to_rgba_u8(chip_color)[:3], dtype=np.float64) / 255.0) if chip_color is not None else None
+    rust_rgb = tuple(np.array(_to_rgba_u8(rust_color)[:3], dtype=np.float64) / 255.0) if rust_color is not None else None
+
+    key = "lib:" + repr((texture, round(float(uv_scale), 4), tuple(round(float(v), 4) for v in uv_offset),
+                         round(float(uv_rotation), 2),
+                         round(float(brightness), 3), round(float(contrast), 3),
+                         round(float(saturation), 3), tint_rgb,
+                         round(float(normal_strength), 3),
+                         None if metallic is None else round(float(metallic), 3),
+                         None if roughness is None else round(float(roughness), 3),
+                         round(float(roughness_offset), 3), round(float(roughness_contrast), 3),
+                         round(float(wear), 3), round(float(scratches), 3), round(float(scuffs), 3),
+                         round(float(paint_chip), 3), chip_rgb,
+                         round(float(rust), 3), rust_rgb,
+                         round(float(dirt), 3), round(float(dust), 3),
+                         round(float(grunge), 3), round(float(fingerprints), 3),
+                         int(seed), emissive and str(emissive), round(float(emissive_intensity), 3),
+                         round(float(opacity), 3), double_sided))
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+
+    maps = library.load_maps(texture)
+    size = maps["basecolor"].size[0] if "basecolor" in maps else 512
+    base_img, rough_img, metal_img = _wear.age_maps(
+        maps.get("basecolor"), maps.get("roughness"), maps.get("metalness"),
+        seed=seed, size=size,
+        brightness=brightness, contrast=contrast, saturation=saturation, tint=tint_rgb,
+        roughness_offset=roughness_offset, roughness_contrast=roughness_contrast,
+        wear=wear, scratches=scratches, scuffs=scuffs,
+        paint_chip=paint_chip, chip_color=chip_rgb,
+        rust=rust, rust_color=rust_rgb,
+        dirt=dirt, dust=dust, grunge=grunge, fingerprints=fingerprints,
+    )
+    # fast path: no wear/adjustments touched the maps -> embed original JPEGs as-is
+    passthrough = (brightness == 1.0 and contrast == 1.0 and saturation == 1.0 and tint is None
+                   and roughness_offset == 0.0 and roughness_contrast == 1.0
+                   and wear == 0.0 and scratches == 0.0 and scuffs == 0.0
+                   and paint_chip == 0.0 and rust == 0.0 and dirt == 0.0 and dust == 0.0
+                   and grunge == 0.0 and fingerprints == 0.0)
+    base_img = _as_jpeg(base_img, quality=85) if not passthrough else base_img
+    # constant metalness from the set (or 1.0 = identity when user overrides)
+    metal_constant = None
+    if metal_img is None and "metallic_constant" in maps:
+        metal_constant = None if metallic is not None else float(maps["metallic_constant"])
+    mr_img = _wear.pack_metallic_roughness(rough_img, metal_img, size,
+                                           metal_constant=metal_constant)
+    mr_img = _as_jpeg(mr_img, quality=85)
+
+    mat = PBRMaterial(
+        name=name or info['name'],
+        baseColorFactor=np.array([255, 255, 255, 255], dtype=np.uint8),
+        baseColorTexture=base_img,
+        metallicRoughnessTexture=mr_img,
+        metallicFactor=float(np.clip(metallic, 0, 1)) if metallic is not None else 1.0,
+        roughnessFactor=float(np.clip(roughness, 0, 1)) if roughness is not None else 1.0,
+        doubleSided=bool(double_sided),
+    )
+    if "normal" in maps:
+        normal_img = maps["normal"]
+        if normal_strength != 1.0:
+            normal_img = _as_jpeg(_wear.scale_normal_image(normal_img, float(normal_strength)),
+                                  quality=95, subsampling=0)
+        mat.normalTexture = normal_img
+    alpha = float(np.clip(opacity, 0.0, 1.0))
+    if alpha < 1.0:
+        mat.alphaMode = "BLEND"
+        bc = np.array([255, 255, 255, int(round(alpha * 255))], dtype=np.uint8)
+        mat.baseColorFactor = bc
+    if emissive is not None:
+        e = np.array(_factor01(emissive)[:3], dtype=np.float64) * float(emissive_intensity)
+        mat.emissiveFactor = np.clip(e, 0.0, 1.0).tolist()
+    # stash UV hints for Scene._apply_material
+    mat._uv_scale = float(uv_scale)
+    mat._uv_offset = (float(uv_offset[0]), float(uv_offset[1]))
+    mat._uv_rotation = float(np.deg2rad(uv_rotation))
+    _cache_put(key, mat)
+    return mat
+
+
 # --------------------------------------------------------------------------
 # presets
 # --------------------------------------------------------------------------
@@ -165,6 +311,28 @@ def _presets() -> dict[str, PBRMaterial]:
     tex = lambda texname, **kw: texture_material(texname, **kw)  # noqa: E731
     col = color_material
     presets = {
+        # --- bundled CC0 library (real scanned/painted surfaces) ---
+        "blued_steel":    lambda: library_material("texturecan/Metal0059", tint=(0.60, 0.60, 0.64),
+                                                   scratches=0.45, wear=0.15, uv_scale=2.0,
+                                                   name="blued_steel"),
+        "worn_steel":     lambda: library_material("ambientcg/Metal031", tint=(0.45, 0.45, 0.48),
+                                                   scratches=0.55, roughness=0.42, uv_scale=2.4,
+                                                   name="worn_steel"),
+        "rusty_steel":    lambda: library_material("polyhaven/rusty_metal_04", wear=0.25, rust=0.55,
+                                                   uv_scale=1.8, name="rusty_steel"),
+        "chipped_red_paint": lambda: library_material("ambientcg/PaintedMetal011", wear=0.55,
+                                                      uv_scale=1.5, seed=5,
+                                                      name="chipped_red_paint"),
+        "worn_red_wood":  lambda: library_material("ambientcg/PaintedWood006B", wear=0.45,
+                                                   uv_scale=1.7, seed=11, name="worn_red_wood"),
+        "weathered_wood": lambda: library_material("ambientcg/Planks035B", wear=0.3, dirt=0.35,
+                                                   uv_scale=1.6, name="weathered_wood"),
+        "old_concrete":   lambda: library_material("ambientcg/Concrete042B", dirt=0.5, wear=0.1,
+                                                   uv_scale=1.2, name="old_concrete"),
+        "old_brick":      lambda: library_material("ambientcg/Bricks082C", dirt=0.35,
+                                                   uv_scale=1.5, name="old_brick"),
+        "camouflage_woodland": lambda: library_material("sharetextures/camouflage_13",
+                                                        uv_scale=1.4, name="camouflage_woodland"),
         # --- metals ---
         "chrome":        lambda: col("#f2f4f6", roughness=0.06, metalness=1.0, name="chrome"),
         "steel":         lambda: tex("brushed_metal", roughness=0.32, metalness=1.0,
@@ -286,13 +454,17 @@ def resolve_material(material: Union[str, PBRMaterial, None]) -> PBRMaterial:
     if isinstance(material, PBRMaterial):
         return material
     if isinstance(material, str):
-        low = material.lower().strip()
+        stripped = material.strip()
+        low = stripped.lower()
+        if low.startswith(("lib:", "library:")):
+            return library_material(stripped.split(":", 1)[1].strip())
         if low in PRESET_NAMES:
             return preset_material(low)
         # treat unknown strings as hex colors if they look like one
         if low.startswith("#") or all(c in "0123456789abcdef" for c in low):
             return color_material(low, name=low)
         raise KeyError(f"Unknown material preset '{material}'. "
-                       f"Available presets: {', '.join(PRESET_NAMES)} "
-                       f"(or pass a hex color like '#88aaff')")
+                       f"Available presets: {', '.join(PRESET_NAMES)}; "
+                       f"bundled texture sets via 'lib:<name>' (see aiglb.list_library()); "
+                       f"or pass a hex color like '#88aaff'")
     raise TypeError(f"material must be a preset name, hex color, or PBRMaterial — got {type(material)}")

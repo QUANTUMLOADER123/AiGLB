@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aiglb"
-version = "0.1.0"
+version = "0.2.0"
 description = "The tiny bridge between LLMs and binary glTF: turn a short Python script into a textured, PBR .glb model."
 readme = "README.md"
 license = { text = "MIT" }
@@ -31,3 +31,12 @@ aiglb = "aiglb.cli:main"
 
 [tool.setuptools]
 packages = ["aiglb"]
+
+[tool.setuptools.package-data]
+aiglb = [
+    "assets/TEXTURE_LICENSES.txt",
+    "assets/textures/index.json",
+    "assets/textures/*/*/*.jpg",
+    "assets/textures/*/*/*.png",
+    "assets/grunge/*.png",
+]

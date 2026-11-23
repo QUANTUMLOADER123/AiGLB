@@ -63,6 +63,6 @@ scene.add("antenna", aiglb.cylinder(0.018, 0.28, 8), GUN, position=(0.16, 2.42, 
 scene.add("beacon", aiglb.sphere(0.045, 14, 8), "neon_pink", position=(0.16, 2.58, 0))
 for side in (-1, 1):  # side ear disks
     scene.add(f"ear_{side}", aiglb.cylinder(0.09, 0.07, 16), GUN,
-              position=(0.30 * side, 2.08, 0), rotation=(0, 0, 90))
+              position=(0.27 * side, 2.08, 0), rotation=(0, 0, 90))
 
 scene.save()
