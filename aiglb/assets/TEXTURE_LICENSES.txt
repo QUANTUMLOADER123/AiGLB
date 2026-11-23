@@ -1,0 +1,20 @@
+Bundled texture library — licenses and attribution
+==================================================
+
+All textures shipped under aiglb/assets/textures/ and aiglb/assets/grunge/ are
+released under the Creative Commons Zero v1.0 Universal license (CC0-1.0).
+You may use them in personal and commercial projects without attribution.
+Attribution is appreciated by the original creators:
+
+  ambientcg/...        ambientcg.com        — Lennart Demes (CC0-1.0)
+  cgbookcase/...       cgbookcase.com       — Rob Tuytel (CC0-1.0)
+  texturecan/...       texturecan.com       — TextureCan (CC0-1.0)
+  polyhaven/...        polyhaven.com        — Rob Tuytel & contributors (CC0-1.0)
+  sharetextures/...    sharetextures.com    — ShareTextures (CC0-1.0)
+  grunge/...           github.com/Nolram12345/DevTextures — Dev Textures (CC0-1.0)
+
+Maps were transcoded from the original Basis/KTX2 files (max 512 px) to
+512 px JPEG (base color / normal / roughness) or PNG (metalness) for
+bundling. No other modifications were made.
+
+Full license text: https://creativecommons.org/publicdomain/zero/1.0/legalcode

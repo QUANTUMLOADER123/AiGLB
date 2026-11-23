@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aiglb"
+version = "0.2.0"
+description = "The tiny bridge between LLMs and binary glTF: turn a short Python script into a textured, PBR .glb model."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "AiGLB contributors" }]
+keywords = ["gltf", "glb", "3d", "llm", "procedural", "pbr", "mesh"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+dependencies = [
+    "trimesh>=4.0",
+    "numpy>=1.23",
+    "Pillow>=9.0",
+    "shapely>=2.0",
+    "pygltflib>=1.15",
+]
+
+[project.scripts]
+aiglb = "aiglb.cli:main"
+
+[tool.setuptools]
+packages = ["aiglb"]
+
+[tool.setuptools.package-data]
+aiglb = [
+    "assets/TEXTURE_LICENSES.txt",
+    "assets/textures/index.json",
+    "assets/textures/*/*/*.jpg",
+    "assets/textures/*/*/*.png",
+    "assets/grunge/*.png",
+]

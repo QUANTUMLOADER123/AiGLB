@@ -1,0 +1,1 @@
+recursive-include aiglb/assets *.jpg *.png *.txt *.json
