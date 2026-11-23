@@ -266,7 +266,7 @@ Every operator returns a new mesh you can `scene.add(...)` like a primitive.
 5. **Roughness tells the story.** Skin/leather/brick/rubber: 0.7–1.0. Painted metal: 0.3–0.5. Polished: 0.05–0.2. Bump `metalness` only for actual metal.
 6. **Micro-detail = realism.** Seams (thin `torus` or `tube`), bolts (tiny `cylinder` + `chrome`), panel gaps (thin `black_metal` boxes sunk 1 mm), mullions on windows. 3–5 such details transform perceived quality.
 7. **Emissive = alive.** Eyes, lamp cores, screens, embers: `emissive=` with color and intensity 1–2. In viewers with bloom they glow.
-8. **Texture scale honesty.** Brick at 30 cm per brick: `uv_scale≈3` on a wall or the bricks are mural-sized. Wood deck planks: `uv_scale≈0.5`. Check against a human reference.
+8. **Texture scale honesty.** The built-in brick texture is 8 courses tall per tile (tile ≈ 0.64 m), so walls look right at `uv_scale≈1.5–2`; wood planks ≈ `0.5–0.8`. Check against a human reference.
 9. **Imperfection.** Slightly rotate/scale "identical" parts (chair legs, rocks, fence posts). Perfect symmetry looks CG-sterile.
 10. **Iterate with the loop.** `preview → adjust → save → preview`. Two or three iterations beat one long "planning" phase. Use `--view front|side|top|iso|hero` to catch bad proportions early.
 
